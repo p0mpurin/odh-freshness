@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // odh-freshness checks which stations in the Open Data Hub Mobility API
-// are flagged active but have stopped sending data, detects feed outages,
+// are flagged active but have stopped sending data, finds days on which many
+// of them stopped together, checks some of them against their source feeds,
 // and writes a static web page plus JSON data files.
 package main
 
@@ -114,8 +115,10 @@ func Run(ctx context.Context, c *Client, th Thresholds, workers int, now time.Ti
 	wg.Wait()
 	sort.Strings(errs)
 	sort.Slice(static, func(i, j int) bool { return static[i].Name < static[j].Name })
+	sources := CheckSources(ctx, c, SourceFeeds, stations)
 	r := BuildReport(now, c.BaseURL, th, stations, errs)
 	r.StaticTypes = static
+	r.Sources = sources
 	return r, nil
 }
 

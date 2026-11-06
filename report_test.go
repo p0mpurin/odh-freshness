@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -166,6 +167,101 @@ func TestRunEndToEnd(t *testing.T) {
 	if ui.Timeline.Older["2017"] != 1 {
 		t.Errorf("older = %v, want the 2017 garage", ui.Timeline.Older)
 	}
+}
+
+func TestCheckSources(t *testing.T) {
+	bfeFeed := `{"EVSEData":[{"OperatorID":"CH*AAA","EVSEDataRecord":[{"EvseID":"CH*AAA*E1","ChargingStationId":"S1"}]}]}`
+	smFeed := `{"data":{"stations":[{"station_id":"bird:1"}]}}`
+	feedStatus := http.StatusOK
+	hits := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits[r.URL.Path]++
+		w.WriteHeader(feedStatus)
+		switch r.URL.Path {
+		case "/bfe":
+			fmt.Fprint(w, bfeFeed)
+		case "/sm":
+			fmt.Fprint(w, smFeed)
+		case "/partial":
+			fmt.Fprint(w, `{"data":{"stations":[{"station_id":"other"}]}}`)
+		}
+	}))
+	defer srv.Close()
+	c := &Client{BaseURL: srv.URL, HTTP: srv.Client()}
+
+	feeds := func(smPath string) []SourceFeed {
+		return []SourceFeed{
+			{Origin: "BFE", URL: srv.URL + "/bfe", Codes: bfeCodes, Covers: func(string) bool { return true }},
+			{Origin: "sharedmobility-ch", URL: srv.URL + smPath, Codes: sharedMobilityCodes,
+				Covers: func(code string) bool { return strings.HasPrefix(code, sharedMobilityStationPrefix) }},
+			{Origin: "nobody", URL: srv.URL + "/unused", Codes: bfeCodes, Covers: func(string) bool { return true }},
+		}
+	}
+	stations := func() []StationResult {
+		return []StationResult{
+			{Code: "CH*AAA*E1", Origin: "BFE", Status: Live},
+			{Code: "CH*AAA:S1", Origin: "BFE", Status: Live},
+			{Code: "CH*AAA*E2", Origin: "BFE", Status: Dead},
+			{Code: "sharedmobility-ch:st:bird:1", Origin: "sharedmobility-ch", Status: Silent},
+			{Code: "sharedmobility-ch:st:bird:2", Origin: "sharedmobility-ch", Status: Dead},
+			{Code: "sharedmobility-ch:pr:bird", Origin: "sharedmobility-ch", Status: Dead},
+			{Code: "M1", Origin: "SIAG", Status: Dead},
+		}
+	}
+	want := func(t *testing.T, s StationResult, listed *bool) {
+		t.Helper()
+		switch {
+		case listed == nil && s.InSource != nil:
+			t.Errorf("%s: inSource = %v, want unchecked", s.Code, *s.InSource)
+		case listed != nil && s.InSource == nil:
+			t.Errorf("%s: unchecked, want %v", s.Code, *listed)
+		case listed != nil && *s.InSource != *listed:
+			t.Errorf("%s: inSource = %v, want %v", s.Code, *s.InSource, *listed)
+		}
+	}
+	yes, no := true, false
+
+	t.Run("marks listed and gone stations", func(t *testing.T) {
+		st := stations()
+		checks := CheckSources(context.Background(), c, feeds("/sm"), st)
+		if len(checks) != 2 || checks[0].Listed != 2 || checks[1].Listed != 1 {
+			t.Errorf("checks = %+v", checks)
+		}
+		for i, w := range []*bool{&yes, &yes, &no, &yes, &no, nil, nil} {
+			want(t, st[i], w)
+		}
+		if hits["/unused"] != 0 {
+			t.Error("fetched a feed no station belongs to")
+		}
+		ui := BuildUIData(BuildReport(now, "x", DefaultThresholds, st, nil))
+		if ui.SourceSplit != (SourceSplit{Gone: 2, Listed: 1, Unchecked: 2}) {
+			t.Errorf("split = %+v", ui.SourceSplit)
+		}
+	})
+
+	t.Run("an incomplete feed marks nothing as gone", func(t *testing.T) {
+		st := []StationResult{{Code: "sharedmobility-ch:st:bird:1", Origin: "sharedmobility-ch", Status: Live}, {Code: "sharedmobility-ch:st:bird:2", Origin: "sharedmobility-ch", Status: Dead}}
+		checks := CheckSources(context.Background(), c, feeds("/partial"), st)
+		if len(checks) != 1 || checks[0].Error == "" {
+			t.Errorf("checks = %+v, want an error", checks)
+		}
+		want(t, st[0], nil)
+		want(t, st[1], nil)
+	})
+
+	t.Run("a failed download marks nothing as gone", func(t *testing.T) {
+		feedStatus = http.StatusNotFound
+		defer func() { feedStatus = http.StatusOK }()
+		st := stations()
+		for _, chk := range CheckSources(context.Background(), c, feeds("/sm"), st) {
+			if chk.Error == "" {
+				t.Errorf("check %+v: want an error", chk)
+			}
+		}
+		for _, s := range st {
+			want(t, s, nil)
+		}
+	})
 }
 
 func TestOutageDetection(t *testing.T) {

@@ -8,7 +8,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Open Data Hub · Data freshness</title>
-<meta name="description" content="Which Open Data Hub stations are flagged active but stopped sending data, and when their feeds broke.">
+<meta name="description" content="Which Open Data Hub stations are flagged active but stopped sending data, when they stopped, and whether their source still lists them.">
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
@@ -25,7 +25,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
   <div class="wrap row">
     <a class="brand" href="#top">ODH <b>Freshness</b></a>
     <nav aria-label="Sections">
-      <a href="#outages">Outages</a>
+      <a href="#outages">Same-day stops</a>
       <a href="#map">Map</a>
       <a href="#explorer">Explorer</a>
       <a href="#sources">Sources</a>
@@ -39,6 +39,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
     <p class="eyebrow">Active stations</p>
     <h1><span id="hero-num">–</span> active stations stopped sending data</h1>
     <p class="lede" id="hero-lede">Checking the Open Data Hub…</p>
+    <p class="lede" id="source-note" hidden></p>
     <div class="kpis" id="kpis"></div>
     <div class="bigbar" id="bigbar" role="img"></div>
     <p class="fine" id="nodata-note"></p>
@@ -46,9 +47,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
   <section class="band dark" id="outages">
     <div class="wrap">
-      <p class="eyebrow">Outages</p>
-      <h2>Most of them stopped on a few specific days</h2>
-      <p class="lede">Each bar is one day and shows how many stations sent their last value on it. Red days are when <span id="outage-min">25</span> or more stations from the same source stopped together, which usually means a whole feed broke, not single sensors.</p>
+      <p class="eyebrow">Same-day stops</p>
+      <h2>Many of them stopped on the same days</h2>
+      <p class="lede">Each bar is one day and shows how many stations sent their last value on it. Red days are when <span id="outage-min">25</span> or more stations from the same source stopped together. That can mean a feed broke, or that those stations were removed from the feed.</p>
       <div class="timeline" id="timeline"></div>
       <p class="fine" id="older-note"></p>
       <div class="outage-list" id="outage-list"></div>
@@ -74,6 +75,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
         <input id="f-q" type="search" placeholder="Search name or code" autocomplete="off"></label>
       <label><span class="sr">Station type</span><select id="f-type"><option value="">All types</option></select></label>
       <label><span class="sr">Source</span><select id="f-origin"><option value="">All sources</option></select></label>
+      <label><span class="sr">Source feed</span><select id="f-feed">
+        <option value="">Any source feed result</option>
+        <option value="gone">Gone from source feed</option>
+        <option value="listed">Still in source feed</option>
+        <option value="unchecked">Source not checked</option>
+      </select></label>
       <div class="seg" role="group" aria-label="Status">
         <button type="button" data-status="" aria-pressed="true">All</button>
         <button type="button" data-status="silent" aria-pressed="false">Silent</button>
@@ -113,7 +120,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       <div class="method-text" id="method-text">
         <p>Every hour this page asks the Mobility API v2 for every station type, every station marked <code>active</code>, and the latest value of each of its data types. A station is judged by its newest value.</p>
         <ul id="rules"></ul>
-        <p>According to the Open Data Hub documentation, a station is set to inactive after 24 hours without data. The silent and dead stations here are still marked active, so either their feed is broken or the flag was never updated.</p>
+        <p>The silent and dead stations here are still marked active, so either their feed has a problem or the flag was never updated. <span id="source-method"></span></p>
         <p id="static-note"></p>
         <p id="error-note"></p>
         <p>Raw results: <a href="data.json">data.json</a> (this page) · <a href="report.json">report.json</a> (every station).</p>

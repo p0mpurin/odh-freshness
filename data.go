@@ -10,7 +10,8 @@ import (
 )
 
 // OutageMinStations is how many stations of one source must go quiet on the
-// same day before that day counts as an outage of the feed.
+// same day before that day is listed as a same-day stop. It can mean a feed
+// broke or that stations were removed upstream.
 const OutageMinStations = 25
 
 // TimelineDays is how many days back the daily timeline reaches; older
@@ -30,8 +31,13 @@ type UIData struct {
 	OutageMin   int            `json:"outageMin"`
 	Outages     []Outage       `json:"outages"`
 	Timeline    Timeline       `json:"timeline"`
+	// Sources are the source feeds compared in this run; SourceSplit divides
+	// the stopped stations by the result.
+	Sources     []SourceCheck `json:"sources,omitempty"`
+	SourceSplit SourceSplit   `json:"sourceSplit"`
 	// Stopped stations as compact rows:
-	// [typeIndex, originIndex, name, code, status, lastSeenUnix, lat, lon]
+	// [typeIndex, originIndex, name, code, status, lastSeenUnix, lat, lon, inSource]
+	// where inSource is true, false, or null when the source was not checked.
 	Stopped [][]any `json:"stopped"`
 	// CartoKey is the public CARTO basemaps key, if any. It is sent to every
 	// visitor's browser with the tile requests, so it is not a secret.
@@ -48,7 +54,15 @@ type Outage struct {
 	Origin   string         `json:"origin"`
 	Date     string         `json:"date"` // YYYY-MM-DD, UTC
 	Stations int            `json:"stations"`
+	Gone     int            `json:"gone"` // of those, no longer in the source feed
 	Types    map[string]int `json:"types"`
+}
+
+// SourceSplit divides stopped stations by what their source feed says.
+type SourceSplit struct {
+	Gone      int `json:"gone"`      // no longer listed: probably removed upstream
+	Listed    int `json:"listed"`    // still listed but silent: may be a real problem
+	Unchecked int `json:"unchecked"` // the source was not checked
 }
 
 type Timeline struct {
@@ -68,6 +82,7 @@ func BuildUIData(r Report) UIData {
 		Errors:      r.Errors,
 		OutageMin:   OutageMinStations,
 		Outages:     []Outage{},
+		Sources:     r.Sources,
 		Stopped:     [][]any{},
 	}
 	typeIdx := map[string]int{}
@@ -107,9 +122,22 @@ func BuildUIData(r Report) UIData {
 		if s.Lat != 0 || s.Lon != 0 {
 			lat, lon = round5(s.Lat), round5(s.Lon)
 		}
+		var inSource any
+		gone := false
+		switch {
+		case s.InSource == nil:
+			d.SourceSplit.Unchecked++
+		case *s.InSource:
+			inSource = true
+			d.SourceSplit.Listed++
+		default:
+			inSource = false
+			gone = true
+			d.SourceSplit.Gone++
+		}
 		d.Stopped = append(d.Stopped, []any{
 			typeIdx[s.Type], originIdx[originLabel(s.Origin)], s.Name, s.Code,
-			string(s.Status), last, lat, lon,
+			string(s.Status), last, lat, lon, inSource,
 		})
 		if date != "" {
 			k := key{originLabel(s.Origin), date}
@@ -119,6 +147,9 @@ func BuildUIData(r Report) UIData {
 				outages[k] = o
 			}
 			o.Stations++
+			if gone {
+				o.Gone++
+			}
 			o.Types[s.Type]++
 		}
 	}

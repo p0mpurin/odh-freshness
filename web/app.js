@@ -62,10 +62,12 @@
   }
   const dayOf = (unix) => (unix == null ? "" : new Date(unix * 1000).toISOString().slice(0, 10));
 
-  // Rows: [typeIndex, originIndex, name, code, status, lastSeenUnix, lat, lon]
+  // Rows: [typeIndex, originIndex, name, code, status, lastSeenUnix, lat, lon, inSource]
+  const FEED_LABEL = { gone: "Gone from source feed", listed: "Still in source feed", unchecked: "Source not checked" };
   const rows = data.stopped.map((r) => ({
     type: data.types[r[0]].name, origin: data.origins[r[1]].name, name: r[2] || r[3], code: r[3],
     status: r[4], last: r[5], day: dayOf(r[5]), lat: r[6], lon: r[7],
+    feed: r[8] === true ? "listed" : r[8] === false ? "gone" : "unchecked",
   }));
   rows.forEach((r) => { r.search = (r.name + " " + r.code).toLowerCase(); });
 
@@ -75,6 +77,17 @@
   $("hero-num").textContent = fmtN(stopped);
   $("hero-lede").textContent = "That is " + pctText(stopped, total) + " of the " + fmtN(total) +
     " active stations in the Open Data Hub. They are still marked active, but their latest value is more than a day old.";
+
+  // What the source feeds say. Only feeds that loaded in this run are named.
+  const checkedSources = (data.sources || []).filter((s) => !s.error).map((s) => s.origin);
+  const namedSources = checkedSources.join(" and ");
+  const split = data.sourceSplit || { gone: 0, listed: 0, unchecked: stopped };
+  if (checkedSources.length) {
+    $("source-note").textContent = "This page also compares " + namedSources + " with their source feeds. " +
+      fmtN(split.gone) + " of these stations are no longer listed there, so they were probably removed rather than broken, and " +
+      fmtN(split.listed) + " are still listed but silent. The other " + fmtN(split.unchecked) + " are not checked.";
+    $("source-note").hidden = false;
+  }
   for (const s of ["live", "late", "silent", "dead"]) {
     $("kpis").append(el("div", { class: "kpi" },
       el("div", { class: "n" }, fmtN(T[s] || 0)),
@@ -84,12 +97,12 @@
   for (const s of ["live", "late", "silent", "dead", "nodata"]) {
     if (T[s]) $("bigbar").append(el("i", { class: s, style: "width:" + pct(T[s], total) + "%", title: STATUS_LABEL[s] + ": " + fmtN(T[s]) }));
   }
-  $("bigbar").setAttribute("aria-label", fmtN(stopped) + " of " + fmtN(total) + " active stations stopped reporting");
+  $("bigbar").setAttribute("aria-label", fmtN(stopped) + " of " + fmtN(total) + " active stations have stopped sending data");
   if (T.nodata) {
     $("nodata-note").textContent = "Not counted: " + fmtN(T.nodata) + " active stations (grey) have no values at all. Most of them are places, like NOI-Place, not sensors.";
   }
 
-  /* ---------------- Outage timeline ---------------- */
+  /* ---------------- Same-day stops timeline ---------------- */
   $("outage-min").textContent = String(data.outageMin);
   const outageDays = new Map();
   for (const o of data.outages) {
@@ -124,11 +137,11 @@
       r.style.cursor = "pointer";
       r.addEventListener("mousemove", (ev) => {
         const lines = [el("b", null, dateFmt.format(new Date(d))), el("br"), fmtN(n) + " stations sent their last value this day"];
-        for (const o of outageDays.get(d) || []) lines.push(el("br"), "Outage: " + o.origin + " (" + fmtN(o.stations) + ")");
+        for (const o of outageDays.get(d) || []) lines.push(el("br"), "Same-day stop: " + o.origin + " (" + fmtN(o.stations) + ")");
         showTip(ev, lines);
       });
       r.addEventListener("mouseleave", hideTip);
-      r.addEventListener("click", () => { setState({ date: d, origin: "", type: "", status: "", q: "" }); go("explorer"); });
+      r.addEventListener("click", () => { setState({ date: d, origin: "", type: "", status: "", feed: "", q: "" }); go("explorer"); });
       svg.append(r);
     });
 
@@ -143,7 +156,7 @@
       svg.append(t);
     }
 
-    // Label up to three of the biggest outages, skipping any within 30 days of
+    // Label up to three of the biggest same-day stops, skipping any within 30 days of
     // one already labelled so labels never collide; stagger their heights.
     const picked = [];
     for (const o of data.outages) {
@@ -185,19 +198,20 @@
     const types = Object.entries(o.types).sort((a, b) => b[1] - a[1]).map(([t, n]) => t + " " + fmtN(n)).join(" · ");
     $("outage-list").append(el("button", {
       type: "button", class: "outage",
-      onclick: () => { setState({ origin: o.origin, date: o.date, type: "", status: "", q: "" }); go("explorer"); },
+      onclick: () => { setState({ origin: o.origin, date: o.date, type: "", status: "", feed: "", q: "" }); go("explorer"); },
     },
     el("div", { class: "d" }, dateFmt.format(new Date(o.date))),
     el("div", { class: "n" }, fmtN(o.stations)),
     el("div", { class: "o" }, o.origin),
     el("div", { class: "t" }, types),
+    checkedSources.includes(o.origin) && el("div", { class: "t" }, fmtN(o.gone || 0) + " gone from source feed"),
     el("div", { class: "go" }, "Show these stations")));
   }
-  if (!data.outages.length) $("outage-list").append(el("p", { class: "fine" }, "No outages detected in this run."));
+  if (!data.outages.length) $("outage-list").append(el("p", { class: "fine" }, "No same-day stops in this run."));
 
   /* ---------------- Filters & state ---------------- */
-  const state = { q: "", type: "", origin: "", status: "", date: "", sort: "last", dir: "asc", shown: PAGE };
-  const typeSel = $("f-type"), originSel = $("f-origin"), qIn = $("f-q");
+  const state = { q: "", type: "", origin: "", status: "", feed: "", date: "", sort: "last", dir: "asc", shown: PAGE };
+  const typeSel = $("f-type"), originSel = $("f-origin"), feedSel = $("f-feed"), qIn = $("f-q");
   const byStopped = (a, b) => (b.counts.silent || 0) + (b.counts.dead || 0) - ((a.counts.silent || 0) + (a.counts.dead || 0));
   for (const g of [...data.types].sort(byStopped)) {
     const n = (g.counts.silent || 0) + (g.counts.dead || 0);
@@ -210,16 +224,16 @@
 
   function readHash() {
     const p = new URLSearchParams(location.hash.slice(1));
-    for (const k of ["q", "type", "origin", "status", "date"]) state[k] = p.get(k) || "";
+    for (const k of ["q", "type", "origin", "status", "feed", "date"]) state[k] = p.get(k) || "";
   }
   function writeHash() {
     const p = new URLSearchParams();
-    for (const k of ["q", "type", "origin", "status", "date"]) if (state[k]) p.set(k, state[k]);
+    for (const k of ["q", "type", "origin", "status", "feed", "date"]) if (state[k]) p.set(k, state[k]);
     const h = p.toString();
     history.replaceState(null, "", h ? "#" + h : location.pathname + location.search);
   }
   function setState(patch, opts = {}) {
-    const fitMap = ["type", "origin", "date"].some((k) => k in patch && patch[k] !== state[k]);
+    const fitMap = ["type", "origin", "feed", "date"].some((k) => k in patch && patch[k] !== state[k]);
     Object.assign(state, patch);
     state.shown = PAGE;
     writeHash();
@@ -230,6 +244,7 @@
   qIn.addEventListener("input", () => setState({ q: qIn.value.trim() }));
   typeSel.addEventListener("change", () => setState({ type: typeSel.value }));
   originSel.addEventListener("change", () => setState({ origin: originSel.value }));
+  feedSel.addEventListener("change", () => setState({ feed: feedSel.value }));
   document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => setState({ status: b.dataset.status })));
   document.querySelectorAll("th button").forEach((b) => b.addEventListener("click", () => {
     const k = b.dataset.sort;
@@ -245,6 +260,7 @@
       (!state.type || r.type === state.type) &&
       (!state.origin || r.origin === state.origin) &&
       (!state.status || r.status === state.status) &&
+      (!state.feed || r.feed === state.feed) &&
       (!state.date || r.day === state.date) &&
       (!q || r.search.includes(q)));
   }
@@ -262,13 +278,13 @@
   function renderChips() {
     const box = $("active-filters");
     const chips = [];
-    const labels = { q: "Search", type: "Type", origin: "Source", status: "Status", date: "Last data on" };
-    for (const k of ["date", "origin", "type", "status", "q"]) {
+    const labels = { q: "Search", type: "Type", origin: "Source", status: "Status", feed: "Source feed", date: "Last data on" };
+    for (const k of ["date", "origin", "type", "status", "feed", "q"]) {
       if (!state[k]) continue;
-      const v = k === "date" ? dateFmt.format(new Date(state[k])) : k === "status" ? STATUS_LABEL[state[k]] : state[k];
+      const v = k === "date" ? dateFmt.format(new Date(state[k])) : k === "status" ? STATUS_LABEL[state[k]] : k === "feed" ? (FEED_LABEL[state[k]] || state[k]) : state[k];
       chips.push(el("button", { type: "button", class: "chip", title: "Remove filter", onclick: () => setState({ [k]: "" }) }, labels[k] + ": " + v + "  ×"));
     }
-    if (chips.length > 1) chips.push(el("button", { type: "button", class: "chip clear", onclick: () => setState({ q: "", type: "", origin: "", status: "", date: "" }) }, "Clear all"));
+    if (chips.length > 1) chips.push(el("button", { type: "button", class: "chip clear", onclick: () => setState({ q: "", type: "", origin: "", status: "", feed: "", date: "" }) }, "Clear all"));
     box.replaceChildren(...chips);
   }
 
@@ -279,7 +295,8 @@
       el("td", null, r.name, el("span", { class: "code" }, r.code)),
       el("td", null, r.type),
       el("td", null, r.origin),
-      el("td", null, el("span", { class: "st" }, el("i", { class: "dot " + r.status }), STATUS_LABEL[r.status])),
+      el("td", null, el("span", { class: "st" }, el("i", { class: "dot " + r.status }), STATUS_LABEL[r.status]),
+        r.feed !== "unchecked" && el("span", { class: "ago" }, FEED_LABEL[r.feed])),
       el("td", { class: "num" }, r.last == null ? "—" : dateFmt.format(new Date(r.last * 1000)), el("span", { class: "ago" }, ago(r.last) + " ago")))));
     $("result-count").textContent = fmtN(items.length) + (items.length === 1 ? " station" : " stations") +
       (items.length > shown.length ? " · showing " + fmtN(shown.length) : "");
@@ -321,7 +338,8 @@
       const m = L.circleMarker([r.lat, r.lon], { radius: 5, weight: 1, color: "#000", fillColor: COLORS[r.status], fillOpacity: 0.9 });
       m.bindPopup(() => el("div", null, el("b", null, r.name), el("br"),
         el("span", { class: "pop-meta" }, r.type + " · " + r.origin), el("br"),
-        STATUS_LABEL[r.status] + ": last data " + (r.last == null ? "never" : dateFmt.format(new Date(r.last * 1000))) + " (" + ago(r.last) + " ago)"));
+        STATUS_LABEL[r.status] + ": last data " + (r.last == null ? "never" : dateFmt.format(new Date(r.last * 1000))) + " (" + ago(r.last) + " ago)",
+        r.feed !== "unchecked" && el("br"), r.feed !== "unchecked" && FEED_LABEL[r.feed]));
       layer.addLayer(m);
     }
     $("map-lede").textContent = fmtN(pts.length) + " stations that stopped sending data." +
@@ -359,7 +377,13 @@
     el("li", null, el("b", null, "Late: "), "older than that, under " + th.activeHours + " hours."),
     el("li", null, el("b", null, "Silent: "), "1 to " + th.deadDays + " days without data."),
     el("li", null, el("b", null, "Dead: "), "over " + th.deadDays + " days without data."),
-    el("li", null, el("b", null, "Outage: "), data.outageMin + " or more stations of one source sent their last value on the same day."));
+    el("li", null, el("b", null, "Same-day stop: "), data.outageMin + " or more stations of one source sent their last value on the same day."));
+  // Say what was and wasn't compared in this run, including any feed that failed.
+  const failedSources = (data.sources || []).filter((s) => s.error).map((s) => s.origin);
+  $("source-method").textContent = (checkedSources.length
+    ? "For " + namedSources + ", this page checks which by comparing each station with the source's current feed: a station no longer listed was probably removed upstream, and one still listed may have a real problem. Other sources are not checked yet."
+    : "This run could not compare any station with its source feed.") +
+    (failedSources.length ? " The feed for " + failedSources.join(" and ") + " could not be used in this run, so those stations count as not checked." : "");
   if (data.staticTypes && data.staticTypes.length) {
     $("static-note").textContent = "Left out because no station has any measurement (places, not sensors): " +
       data.staticTypes.map((s) => s.name + " (" + fmtN(s.stations) + ")").join(", ") + ".";
@@ -373,6 +397,7 @@
     qIn.value = state.q;
     typeSel.value = state.type;
     originSel.value = state.origin;
+    feedSel.value = state.feed;
     document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.status === state.status)));
     const list = filtered();
     renderChips();

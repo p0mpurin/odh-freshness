@@ -15,8 +15,7 @@ type Status string
 const (
 	// Live: newest value is within the expected interval (3x its period, at least 1 hour).
 	Live Status = "live"
-	// Late: older than expected, but still inside the 24 hours after which the
-	// ODH docs say a station is automatically marked inactive.
+	// Late: older than expected, but less than 24 hours old.
 	Late Status = "late"
 	// Silent: no data for 1 to 30 days, yet still flagged active.
 	Silent Status = "silent"
@@ -29,12 +28,11 @@ const (
 // AllStatuses is the display order, healthiest first.
 var AllStatuses = []Status{Live, Late, Silent, Dead, NoData}
 
-// Thresholds controls the classification. Defaults follow the ODH docs,
-// which say a station is marked inactive after 24 hours without data.
+// Thresholds controls the classification.
 type Thresholds struct {
 	MinLive    time.Duration // floor for the "expected interval"
 	PeriodMult float64       // expected interval = PeriodMult x mperiod
-	Active     time.Duration // the documented 24-hour active window
+	Active     time.Duration // beyond this, a station counts as stopped
 	Dead       time.Duration // beyond this, a station counts as dead
 }
 
@@ -58,6 +56,9 @@ type StationResult struct {
 	DataTypes int        `json:"dataTypes"`
 	Lat       float64    `json:"lat,omitempty"`
 	Lon       float64    `json:"lon,omitempty"`
+	// InSource says whether the source's own feed still lists this station.
+	// It is nil when the source was not checked.
+	InSource *bool `json:"inSource,omitempty"`
 }
 
 // Counts holds the number of stations per status.
@@ -101,6 +102,7 @@ type Report struct {
 	Stations    []StationResult `json:"stations"`
 	Errors      []string        `json:"errors,omitempty"`
 	StaticTypes []StaticType    `json:"staticTypes,omitempty"`
+	Sources     []SourceCheck   `json:"sources,omitempty"`
 }
 
 // StaticType is a station type whose active stations have no measurements at all,

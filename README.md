@@ -7,17 +7,17 @@ SPDX-License-Identifier: CC0-1.0
 # Open Data Hub freshness monitor
 
 Shows which stations in the [Open Data Hub](https://opendatahub.com/) Mobility API are
-flagged **active** but have stopped sending data, and **when their feeds broke**.
+flagged **active** but have stopped sending data, **when they stopped**, and for some
+sources, **whether the source still lists them**.
 
-The page has five parts: headline numbers, an **outage timeline** (days on which 25 or more
-stations of one source stopped at once), a **map**, a searchable **explorer** of every stopped
-station, and a **per-source** overview. Filters live in the URL, so a view can be shared, e.g.
-`#origin=sharedmobility-ch&date=2026-08-20`.
+The page has five parts: headline numbers, a **same-day stops timeline** (days on which 25 or
+more stations of one source stopped at once), a **map**, a searchable **explorer** of every
+stopped station, and a **per-source** overview. Filters live in the URL, so a view can be
+shared, e.g. `#origin=sharedmobility-ch&date=2026-08-20`.
 
-The ODH documentation says a station is marked inactive automatically after 24 hours
-without data. In practice, many stations stay flagged active for months or years
-after their last measurement. This tool finds them, groups them by station type and
-data source, and publishes a simple static page every hour.
+Many stations stay flagged active for months or years after their last measurement. This
+tool finds them, groups them by station type and data source, and publishes a simple
+static page every hour.
 
 ## What it checks
 
@@ -40,6 +40,21 @@ Silent and dead stations together are the headline "stopped reporting" number.
 Stations with no measurements are shown but not counted, because many are places rather than sensors.
 Station types with active stations but no measurements at all (places, points of interest)
 are treated as static: they are listed on the page but left out of the counts.
+
+### Source feed check
+
+A station that stopped may have a real problem, or it may have been removed upstream while
+its active flag was never updated. For BFE and sharedmobility-ch, each run compares stations
+with the same public feeds their transformers read:
+
+| Result | Meaning |
+| --- | --- |
+| Gone from source feed | no longer listed, so it was probably removed upstream |
+| Still in source feed | listed but silent, so it may have a real problem |
+| Source not checked | any other source, or sharedmobility-ch provider records |
+
+If a feed fails to load, is empty, or lists fewer than half of that source's live stations,
+the run treats it as unreliable and leaves those stations as not checked.
 
 ## Run it
 
@@ -92,7 +107,8 @@ changing a few lines.
 | --- | --- |
 | `odh.go` | API client: station types, active stations, latest measurements, timestamp parsing |
 | `report.go` | Classification rules and aggregation by station type and source |
-| `data.go` | Outage detection, timeline, compact `data.json` for the page |
+| `data.go` | Same-day stop detection, timeline, compact `data.json` for the page |
+| `source.go` | Compares stations with their source feeds |
 | `web/` | The static page: `index.html`, `style.css`, `app.js` (no build step, no framework) |
 | `web.go` | Embeds `web/` into the binary and copies it to the output folder |
 | `main.go` | Flags, parallel fetching, output files |
