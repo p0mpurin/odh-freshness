@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<!--
+SPDX-FileCopyrightText: 2026 The odh-freshness contributors
+SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Data Hub · Data freshness</title>
+<meta name="description" content="Which Open Data Hub stations are flagged active but stopped sending data, and when their feeds broke.">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="utility">
+  <div class="wrap row">
+    <span>Open Data Hub · Mobility API v2</span>
+    <span id="updated">Loading…</span>
+  </div>
+</div>
+
+<header class="masthead">
+  <div class="wrap row">
+    <a class="brand" href="#top">ODH <b>Freshness</b></a>
+    <nav aria-label="Sections">
+      <a href="#outages">Outages</a>
+      <a href="#map">Map</a>
+      <a href="#explorer">Explorer</a>
+      <a href="#sources">Sources</a>
+      <a href="#method">Method</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero wrap">
+    <p class="eyebrow">Active stations</p>
+    <h1><span id="hero-num">–</span> active stations stopped sending data</h1>
+    <p class="lede" id="hero-lede">Checking the Open Data Hub…</p>
+    <div class="kpis" id="kpis"></div>
+    <div class="bigbar" id="bigbar" role="img"></div>
+    <p class="fine" id="nodata-note"></p>
+  </section>
+
+  <section class="band dark" id="outages">
+    <div class="wrap">
+      <p class="eyebrow">Outages</p>
+      <h2>Most of them stopped on a few specific days</h2>
+      <p class="lede">Each bar is one day and shows how many stations sent their last value on it. Red days are when <span id="outage-min">25</span> or more stations from the same source stopped together, which usually means a whole feed broke, not single sensors.</p>
+      <div class="timeline" id="timeline"></div>
+      <p class="fine" id="older-note"></p>
+      <div class="outage-list" id="outage-list"></div>
+    </div>
+  </section>
+
+  <section class="wrap section" id="map">
+    <p class="eyebrow">Map</p>
+    <h2>Where they are</h2>
+    <p class="lede" id="map-lede">Stations that stopped sending data.</p>
+    <div class="legend">
+      <span><i class="sw silent"></i>Silent 1–30 days</span>
+      <span><i class="sw dead"></i>Dead over 30 days</span>
+    </div>
+    <div class="mapbox" id="mapbox"></div>
+  </section>
+
+  <section class="wrap section" id="explorer">
+    <p class="eyebrow">Explorer</p>
+    <h2>Find a station</h2>
+    <div class="filters">
+      <label class="search"><span class="sr">Search stations</span>
+        <input id="f-q" type="search" placeholder="Search name or code" autocomplete="off"></label>
+      <label><span class="sr">Station type</span><select id="f-type"><option value="">All types</option></select></label>
+      <label><span class="sr">Source</span><select id="f-origin"><option value="">All sources</option></select></label>
+      <div class="seg" role="group" aria-label="Status">
+        <button type="button" data-status="" aria-pressed="true">All</button>
+        <button type="button" data-status="silent" aria-pressed="false">Silent</button>
+        <button type="button" data-status="dead" aria-pressed="false">Dead</button>
+      </div>
+    </div>
+    <div class="active-filters" id="active-filters"></div>
+    <p class="count" id="result-count"></p>
+    <div class="tablewrap">
+      <table id="table">
+        <thead><tr>
+          <th><button type="button" data-sort="name">Station</button></th>
+          <th><button type="button" data-sort="type">Type</button></th>
+          <th><button type="button" data-sort="origin">Source</button></th>
+          <th><button type="button" data-sort="status">Status</button></th>
+          <th class="num"><button type="button" data-sort="last">Last data</button></th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <button type="button" class="more" id="more" hidden>Show more</button>
+  </section>
+
+  <section class="wrap section" id="sources">
+    <p class="eyebrow">Sources</p>
+    <h2>Sources</h2>
+    <p class="lede">Sorted by how many stations stopped. The percentage is the share of that source's active stations. Click a source to see its stations.</p>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <section class="band grey" id="method">
+    <div class="wrap cols">
+      <div>
+        <p class="eyebrow">Method</p>
+        <h2>How it works</h2>
+      </div>
+      <div class="method-text" id="method-text">
+        <p>Every hour this page asks the Mobility API v2 for every station type, every station marked <code>active</code>, and the latest value of each of its data types. A station is judged by its newest value.</p>
+        <ul id="rules"></ul>
+        <p>According to the Open Data Hub documentation, a station is set to inactive after 24 hours without data. The silent and dead stations here are still marked active, so either their feed is broken or the flag was never updated.</p>
+        <p id="static-note"></p>
+        <p id="error-note"></p>
+        <p>Raw results: <a href="data.json">data.json</a> (this page) · <a href="report.json">report.json</a> (every station).</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap row">
+    <span>Independent open-source project built on <a href="https://opendatahub.com/">Open Data Hub</a> data. Not an official NOI Techpark service.</span>
+    <span>AGPL-3.0-or-later</span>
+  </div>
+</footer>
+
+<div class="tip" id="tip" hidden></div>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
