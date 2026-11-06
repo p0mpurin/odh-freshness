@@ -303,6 +303,14 @@
   const layer = L.layerGroup().addTo(map);
   const COLORS = { silent: getComputedStyle(document.documentElement).getPropertyValue("--silent").trim(), dead: getComputedStyle(document.documentElement).getPropertyValue("--dead").trim() };
 
+  // Bounds of the 2nd to 98th percentile of positions, so outliers don't drive the zoom.
+  function coreBounds(pts) {
+    if (pts.length < 20) return pts;
+    const q = (arr, p) => arr[Math.min(arr.length - 1, Math.max(0, Math.round(p * (arr.length - 1))))];
+    const lats = pts.map((p) => p[0]).sort((a, b) => a - b), lons = pts.map((p) => p[1]).sort((a, b) => a - b);
+    return [[q(lats, 0.02), q(lons, 0.02)], [q(lats, 0.98), q(lons, 0.98)]];
+  }
+
   function renderMap(list, fit) {
     layer.clearLayers();
     const pts = [];
@@ -319,7 +327,9 @@
     $("map-lede").textContent = fmtN(pts.length) + " stations that stopped sending data." +
       (unplaced ? " " + fmtN(unplaced) + " more have no coordinates, so they are not on the map." : "");
     if (fit) {
-      if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.08), { maxZoom: 12 });
+      // Zoom to where most stations are: a few have wrong coordinates
+      // (e.g. Swiss chargers placed in the Atlantic) and would zoom out to half the world.
+      if (pts.length) map.fitBounds(L.latLngBounds(coreBounds(pts)).pad(0.08), { maxZoom: 12 });
       else map.setView([46.6, 11.3], 8);
     }
   }
