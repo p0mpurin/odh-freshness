@@ -17,7 +17,7 @@ shared, e.g. `#origin=sharedmobility-ch&date=2026-08-20`.
 
 Many stations stay flagged active for months or years after their last measurement. This
 tool finds them, groups them by station type and data source, and publishes a simple
-static page every hour.
+static page several times a day.
 
 ## What it checks
 
@@ -78,9 +78,11 @@ Flags: `-carto-key` (see below), `-api` (base URL), `-out`, `-workers` (default 
 go test ./...               # unit tests + an end-to-end run against a fake API
 ```
 
-## Publish hourly (GitHub Pages)
+## Publish on a schedule (GitHub Pages)
 
-`.github/workflows/publish.yml` tests, runs the check every hour and deploys `public/` to GitHub Pages.
+`.github/workflows/publish.yml` tests, runs the check and deploys `public/` to GitHub Pages. It is
+scheduled every hour, but GitHub often delays scheduled workflows, so in practice the page updates
+every few hours. The update time is shown at the top of the page.
 In the repo settings, set **Pages → Source** to **GitHub Actions**. The actions are pinned to commit
 SHAs and checkout runs with `persist-credentials: false`.
 

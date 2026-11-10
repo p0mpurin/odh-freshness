@@ -118,7 +118,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
         <h2>How it works</h2>
       </div>
       <div class="method-text" id="method-text">
-        <p>Every hour this page asks the Mobility API v2 for every station type, every station marked <code>active</code>, and the latest value of each of its data types. A station is judged by its newest value.</p>
+        <p>Several times a day this page asks the Mobility API v2 for every station type, every station marked <code>active</code>, and the latest value of each of its data types. A station is judged by its newest value. The run is scheduled hourly on GitHub Actions, which often delays scheduled runs by several hours, so check the update time at the top of the page.</p>
         <ul id="rules"></ul>
         <p>The silent and dead stations here are still marked active, so either their feed has a problem or the flag was never updated. <span id="source-method"></span></p>
         <p id="static-note"></p>
